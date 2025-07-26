@@ -55,7 +55,6 @@ cors = CORS(app, origins="*")
 # Gets a list of users
 @app.route("/api/users", methods=["GET"])
 def users() -> Response:
-
     try:
         users = database.get_user_list()
 
