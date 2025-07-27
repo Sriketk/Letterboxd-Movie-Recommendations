@@ -49,8 +49,14 @@ async def recommend_n_movies(
         model = load_general_model()
 
     # Finds movies not seen by the user
-    initial_mask = (~movie_data["movie_id"].isin(processed_user_df["movie_id"])) & (
-        ~movie_data["movie_id"].isin(unrated)
+    initial_mask = (
+        (~movie_data["movie_id"].isin(processed_user_df["movie_id"]))
+        & (~movie_data["movie_id"].isin(unrated))
+        & (
+            ~movie_data["url"].isin(
+                processed_user_df["url"]
+            )  # Also filter by URL to catch duplicates
+        )
     )
     unseen = movie_data.loc[initial_mask].copy()
 

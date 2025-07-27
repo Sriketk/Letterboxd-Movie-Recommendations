@@ -276,11 +276,39 @@ def update_movie_urls(urls_df: pd.DataFrame) -> None:
 def get_movie_data_cached() -> Tuple:
 
     try:
-        # Loads movie data
-        movie_data, _ = supabase.table("movie_data").select("*").execute()
-        movie_data = pd.DataFrame(movie_data[1])
+        # Get table size first
+        table_size = get_table_size("movie_data")
+        batch_size = 999  # Stay under Supabase's 1000 row hard limit
 
-        # No need to process genres anymore - they're already processed during scraping
+        all_movie_data = []
+
+        print(f"Loading {table_size} movies in batches of {batch_size}...")
+
+        # Use pagination with smaller batches to avoid Supabase 1000 row limit
+        for offset in range(0, table_size, batch_size):
+            try:
+                response = (
+                    supabase.table("movie_data")
+                    .select("*")
+                    .range(offset, offset + batch_size - 1)
+                    .execute()
+                )
+
+                if response and response.data:
+                    all_movie_data.extend(response.data)
+                    print(
+                        f"  Loaded batch {offset//batch_size + 1}: {len(response.data)} rows (total: {len(all_movie_data)})"
+                    )
+            except Exception as e:
+                print(f"Error loading movie data batch {offset}: {e}")
+                raise e
+
+        print(f"Successfully loaded {len(all_movie_data)} movies from database")
+
+        # Convert to DataFrame
+        movie_data = pd.DataFrame.from_records(all_movie_data)
+
+        # Process data types
         movie_data["url"] = movie_data["url"].astype("string")
         movie_data["title"] = movie_data["title"].astype("string")
         movie_data["poster"] = movie_data["poster"].astype("string")
