@@ -229,17 +229,33 @@ def mark_movie_urls_deprecated(deprecated_df: pd.DataFrame) -> None:
     if deprecated_df.empty:
         return
 
-    # Ensures the DataFrame has the necessary columns
-    records_to_update = [
-        {"movie_id": row["movie_id"], "url": row["url"], "is_deprecated": True}
-        for _, row in deprecated_df.iterrows()
-    ]
+    try:
+        deprecated_records = deprecated_df.to_dict(orient="records")
+        for record in deprecated_records:
+            supabase.table("movie_urls").update({"is_deprecated": True}).eq(
+                "movie_id", record["movie_id"]
+            ).execute()
+    except Exception as e:
+        print(e)
+        raise e
+
+
+# Deletes successfully scraped movie URLs from database
+def delete_scraped_movie_urls(movie_ids: Sequence[str]) -> None:
+    """
+    Deletes movie URLs after successful scraping to prevent re-scraping
+
+    Args:
+        movie_ids: List of movie IDs that were successfully scraped
+    """
+    if not movie_ids:
+        return
 
     try:
-        # Upserts the records to mark them as deprecated
-        supabase.table("movie_urls").upsert(records_to_update).execute()
+        for movie_id in movie_ids:
+            supabase.table("movie_urls").delete().eq("movie_id", movie_id).execute()
     except Exception as e:
-        print(f"Failed to mark movie URLs as deprecated in database: {e}")
+        print(e)
         raise e
 
 
@@ -259,18 +275,12 @@ def update_movie_urls(urls_df: pd.DataFrame) -> None:
 @lru_cache(maxsize=1)
 def get_movie_data_cached() -> Tuple:
 
-    from data_processing.utils import process_genres
-
     try:
         # Loads movie data
         movie_data, _ = supabase.table("movie_data").select("*").execute()
         movie_data = pd.DataFrame(movie_data[1])
 
-        # Processes movie data
-        genre_columns = movie_data[["genres"]].apply(
-            process_genres, axis=1, result_type="expand"
-        )
-        movie_data = pd.concat([movie_data, genre_columns], axis=1)
+        # No need to process genres anymore - they're already processed during scraping
         movie_data["url"] = movie_data["url"].astype("string")
         movie_data["title"] = movie_data["title"].astype("string")
         movie_data["poster"] = movie_data["poster"].astype("string")

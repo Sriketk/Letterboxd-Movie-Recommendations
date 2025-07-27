@@ -79,6 +79,52 @@ def assign_countries(country_of_origin: str) -> int:
     return country_map.get(country_of_origin, len(country_map))
 
 
+# Adds boolean genre columns from encoded genres integer
+def add_genre_boolean_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Populates boolean genre columns from the encoded genres integer"""
+
+    genre_options = [
+        "action",
+        "adventure",
+        "animation",
+        "comedy",
+        "crime",
+        "documentary",
+        "drama",
+        "family",
+        "fantasy",
+        "history",
+        "horror",
+        "music",
+        "mystery",
+        "romance",
+        "science_fiction",
+        "tv_movie",
+        "thriller",
+        "war",
+        "western",
+    ]
+
+    # Initialize all boolean columns to 0
+    for genre in genre_options:
+        df[f"is_{genre}"] = 0
+
+    # Populate boolean columns from encoded genres
+    for idx, row in df.iterrows():
+        genres_int = row["genres"]
+        if pd.isna(genres_int) or genres_int == 0:
+            continue
+
+        # Convert to binary and pad to 19 characters
+        genre_binary = bin(int(genres_int))[2:].zfill(19)
+
+        # Set boolean columns
+        for i, genre in enumerate(genre_options):
+            df.loc[idx, f"is_{genre}"] = int(genre_binary[i])
+
+    return df
+
+
 # Scrapes movie data
 async def movie_crawl(
     movie_urls: pd.DataFrame,
@@ -86,24 +132,76 @@ async def movie_crawl(
     show_objects: bool,
     update_movie_data: bool,
     verbose: bool = False,
+    batch_num: int = 1,
+    total_batches: int = 1,
 ) -> Tuple[int, int, int, int]:
 
     movie_data = []
     deprecated_urls = []
-    for _, row in movie_urls.iterrows():
+    total_movies = len(movie_urls)
+    successful_scrapes = 0
+    failed_scrapes = 0
+
+    print(f"🎬 Batch {batch_num}/{total_batches}: Processing {total_movies} movies...")
+
+    for idx, (_, row) in enumerate(movie_urls.iterrows()):
+        movie_num = idx + 1
+        start_time = time.perf_counter()
+
         result, is_deprecated = await get_letterboxd_data(
             row=row, session=session, verbose=verbose
         )
-        if show_objects and result:
-            print(result)
+
+        end_time = time.perf_counter()
+        scrape_time = end_time - start_time
+
         if result:
             movie_data.append(result)
+            successful_scrapes += 1
+            status = "✅"
+            title = result.get("title", "Unknown")
+        else:
+            failed_scrapes += 1
+            status = "❌"
+            title = row.get("movie_id", "Unknown")
+
         if is_deprecated:
             deprecated_urls.append({"movie_id": row["movie_id"], "url": row["url"]})
+            status += " (deprecated)"
+
+        # Calculate speed and ETA
+        elapsed_total = time.perf_counter() - start_time if idx == 0 else None
+        if movie_num > 1:
+            avg_time_per_movie = (
+                (time.perf_counter() - start_time) / movie_num
+                if idx == 0
+                else scrape_time
+            )
+            remaining_movies = total_movies - movie_num
+            eta_seconds = (
+                remaining_movies * avg_time_per_movie if avg_time_per_movie else 0
+            )
+            eta_str = (
+                f", ETA: {eta_seconds:.0f}s"
+                if eta_seconds > 0 and remaining_movies > 0
+                else ""
+            )
+        else:
+            eta_str = ""
+
+        # Progress logging
+        progress_pct = (movie_num / total_movies) * 100
+        print(
+            f"  [{movie_num}/{total_movies}] ({progress_pct:.1f}%) {status} {title[:40]}{'...' if len(title) > 40 else ''} ({scrape_time:.1f}s){eta_str}"
+        )
+
+        if show_objects and result:
+            print(f"    📋 Data: {result}")
 
     # Processes movie data
     movie_data_df = pd.DataFrame(movie_data)
     if not movie_data_df.empty:
+        print(f"  🔧 Processing {len(movie_data_df)} scraped movies...")
         movie_data_df["genres"] = movie_data_df["genres"].apply(
             lambda genres: [genre.lower().replace(" ", "_") for genre in genres]
         )
@@ -111,6 +209,11 @@ async def movie_crawl(
         movie_data_df["country_of_origin"] = movie_data_df["country_of_origin"].apply(
             assign_countries
         )
+
+        # Add boolean genre columns
+        print(f"  🏷️  Adding genre boolean columns...")
+        movie_data_df = add_genre_boolean_columns(movie_data_df)
+
     num_updates = 0
     num_success_batches = 0
     num_failure_batches = 0
@@ -120,31 +223,46 @@ async def movie_crawl(
     if update_movie_data:
         try:
             if not movie_data_df.empty:
+                print(f"  💾 Saving {len(movie_data_df)} movies to database...")
                 database.update_movie_data(movie_data_df=movie_data_df)
                 num_updates = len(movie_data_df)
-                print(f"Successfully updated batch movie data in database")
+                print(f"  ✅ Successfully saved {num_updates} movies to database")
+
+                # Clean up: Delete successfully scraped URLs
+                scraped_movie_ids = movie_data_df["movie_id"].tolist()
+                print(f"  🗑️  Cleaning up {len(scraped_movie_ids)} scraped URLs...")
+                database.delete_scraped_movie_urls(scraped_movie_ids)
+                print(
+                    f"  ✅ Successfully removed {len(scraped_movie_ids)} URLs from scraping queue"
+                )
             else:
-                print("No movie data to update in database")
+                print(f"  ⚠️  No movie data to save to database")
 
             num_success_batches = 1
 
         except Exception as e:
-            print(f"Failed to update batch movie data in database: {e}")
+            print(f"  ❌ Failed to save movies to database: {e}")
             num_failure_batches = 1
 
         if deprecated_urls:
             deprecated_df = pd.DataFrame(deprecated_urls)
             try:
+                print(f"  🗑️  Marking {len(deprecated_df)} URLs as deprecated...")
                 database.mark_movie_urls_deprecated(deprecated_df=deprecated_df)
                 num_deprecated_marked = len(deprecated_df)
                 print(
-                    f"Successfully marked {len(deprecated_df)} URLs as deprecated in this batch"
+                    f"  ✅ Successfully marked {num_deprecated_marked} URLs as deprecated"
                 )
             except Exception as e:
-                print(f"Failed to mark deprecated URLs: {e}")
+                print(f"  ❌ Failed to mark deprecated URLs: {e}")
         else:
-            print("No deprecated URLs to mark in this batch")
+            print(f"  ℹ️  No deprecated URLs found in this batch")
+    else:
+        print(f"  🚫 Skipping database update (update_movie_data=False)")
 
+    print(
+        f"  📈 Batch {batch_num} summary: {successful_scrapes} ✅, {failed_scrapes} ❌, {len(deprecated_urls)} deprecated"
+    )
     return num_success_batches, num_updates, num_failure_batches, num_deprecated_marked
 
 
@@ -296,6 +414,14 @@ async def main(
     session_refresh = 5
     results = []
 
+    total_movies = len(movie_urls)
+    total_batches = len(url_batches)
+    print(f"\n🚀 Starting movie scraping process:")
+    print(f"   📊 Total movies to scrape: {total_movies}")
+    print(f"   📦 Total batches: {total_batches}")
+    print(f"   🔄 Session refresh every {session_refresh} batches")
+    print(f"   ⚡ Batch size: {batch_size} movies per batch\n")
+
     # Set proper headers to avoid being blocked by Letterboxd
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
@@ -307,7 +433,16 @@ async def main(
         "Upgrade-Insecure-Requests": "1",
     }
 
+    session_num = 0
     for i in range(0, len(url_batches), session_refresh):
+        session_num += 1
+        batches_in_session = url_batches[i : i + session_refresh]
+        movies_in_session = sum(len(batch) for batch in batches_in_session)
+
+        print(
+            f"🔗 Session {session_num}: Starting HTTP session for {len(batches_in_session)} batches ({movies_in_session} movies)"
+        )
+
         connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
         timeout = aiohttp.ClientTimeout(total=60, connect=10)
         async with aiohttp.ClientSession(
@@ -320,10 +455,15 @@ async def main(
                     show_objects=show_objects,
                     update_movie_data=update_movie_data,
                     verbose=False,
+                    batch_num=(i // session_refresh) * session_refresh + batch_idx + 1,
+                    total_batches=total_batches,
                 )
-                for batch in url_batches[i : i + session_refresh]
+                for batch_idx, batch in enumerate(batches_in_session)
             ]
-            results.extend(await asyncio.gather(*tasks))
+            session_results = await asyncio.gather(*tasks)
+            results.extend(session_results)
+
+        print(f"✅ Session {session_num} completed\n")
 
     if update_movie_data:
         num_success_batches = sum([r[0] for r in results])
@@ -331,15 +471,32 @@ async def main(
         num_failure_batches = sum([r[2] for r in results])
         num_deprecated = sum([r[3] for r in results])
 
-        print(f"Successfully processed {num_success_batches} movie data batches")
-        print(f"Failed to process {num_failure_batches} movie data batches")
-        print(f"Successfully updated {num_updates} movies in database")
-        print(f"Found and marked {num_deprecated} deprecated URLs")
+        print(f"🎯 SCRAPING COMPLETE!")
+        print(f"═══════════════════════════════════════")
+        print(f"📊 Total movies processed: {total_movies}")
+        print(f"✅ Successfully saved: {num_updates} movies")
+        print(f"📦 Successful batches: {num_success_batches}")
+        print(f"❌ Failed batches: {num_failure_batches}")
+        print(f"🗑️  Deprecated URLs found: {num_deprecated}")
+        if num_updates > 0:
+            success_rate = (num_updates / total_movies) * 100
+            print(f"📈 Success rate: {success_rate:.1f}%")
+
+        # Show remaining URLs in queue
+        try:
+            remaining_urls = database.get_table_size("movie_urls")
+            print(f"📋 URLs remaining in queue: {remaining_urls}")
+        except:
+            pass
     else:
-        print("Did not update movie data in database")
+        print(f"🚫 Database update was disabled - no movies saved")
 
     finish = time.perf_counter()
-    print(f"Scraped movie data in {finish - start} seconds")
+    total_time = finish - start
+    movies_per_second = total_movies / total_time if total_time > 0 else 0
+    print(f"⏱️  Total time: {total_time:.1f} seconds")
+    print(f"🚀 Average speed: {movies_per_second:.2f} movies/second")
+    print(f"═══════════════════════════════════════\n")
 
     # Clears movie data cache
     if clear_movie_data_cache:
