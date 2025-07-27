@@ -164,7 +164,9 @@ async def get_statistics() -> Response:
 
     # Gets user dataframe
     try:
-        user_df = await get_user_dataframe(username, movie_data, update_urls=True)
+        user_df = await get_user_dataframe(
+            username, movie_data, update_urls=True, verbose=True
+        )
     except UserProfileException as e:
         abort(500, e)
 

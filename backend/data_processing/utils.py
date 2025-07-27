@@ -77,7 +77,7 @@ GENRES = [
 
 # Gets user rating dataframe
 async def get_user_dataframe(
-    user: str, movie_data: pd.DataFrame, update_urls: bool
+    user: str, movie_data: pd.DataFrame, update_urls: bool, verbose: bool = False
 ) -> pd.DataFrame:
 
     # Gets and processes the user data
@@ -91,6 +91,25 @@ async def get_user_dataframe(
                 update_urls=update_urls,
             )
 
+            # Ensure movie_id columns have the same type for merging
+        # Convert both to string and strip any whitespace
+        user_df["movie_id"] = user_df["movie_id"].astype(str).str.strip()
+        movie_data["movie_id"] = movie_data["movie_id"].astype(str).str.strip()
+
+        # Also ensure URL columns are consistent
+        user_df["url"] = user_df["url"].astype(str).str.strip()
+        movie_data["url"] = movie_data["url"].astype(str).str.strip()
+
+        if verbose:
+            print(
+                f"User data: {len(user_df)} rows, movie_id type: {user_df['movie_id'].dtype}"
+            )
+            print(
+                f"Movie data: {len(movie_data)} rows, movie_id type: {movie_data['movie_id'].dtype}"
+            )
+            print(f"Sample user movie_ids: {user_df['movie_id'].head(3).tolist()}")
+            print(f"Sample movie movie_ids: {movie_data['movie_id'].head(3).tolist()}")
+
         processed_user_df = user_df.merge(
             movie_data, how="left", on=["movie_id", "url"]
         )
@@ -101,13 +120,26 @@ async def get_user_dataframe(
         return processed_user_df
     except Exception as e:
         print(f"Error getting {user}'s dataframe:", e)
-        raise Exception
+        import traceback
+
+        traceback.print_exc()
+        raise e
 
 
 # Converts genre integers into one-hot encoding
 def process_genres(row: pd.DataFrame) -> Dict[str, int]:
 
-    genre_binary = bin(row["genres"])[2:].zfill(19)
+    # Handle both string and integer inputs from database
+    genres_value = row["genres"]
+    if isinstance(genres_value, str):
+        # If it's a string, try to convert to int first
+        try:
+            genres_value = int(genres_value)
+        except ValueError:
+            # If conversion fails, assume it's 0 (no genres)
+            genres_value = 0
+
+    genre_binary = bin(genres_value)[2:].zfill(19)
 
     return {f"is_{genre}": int(genre_binary[pos]) for pos, genre in enumerate(GENRES)}
 
@@ -146,6 +178,24 @@ async def get_processed_user_df(
             ex=3600,
         )
 
-    processed_user_df = user_df.merge(movie_data, on=["movie_id", "url"])
+    # Ensure movie_id columns have the same type for merging
+    user_df["movie_id"] = user_df["movie_id"].astype(str).str.strip()
+    movie_data["movie_id"] = movie_data["movie_id"].astype(str).str.strip()
+
+    # Also ensure URL columns are consistent
+    user_df["url"] = user_df["url"].astype(str).str.strip()
+    movie_data["url"] = movie_data["url"].astype(str).str.strip()
+
+    try:
+        processed_user_df = user_df.merge(movie_data, on=["movie_id", "url"])
+    except Exception as e:
+        print(f"Error merging user and movie data: {e}")
+        print(
+            f"User data types: movie_id={user_df['movie_id'].dtype}, url={user_df['url'].dtype}"
+        )
+        print(
+            f"Movie data types: movie_id={movie_data['movie_id'].dtype}, url={movie_data['url'].dtype}"
+        )
+        raise e
 
     return processed_user_df, unrated, movie_data

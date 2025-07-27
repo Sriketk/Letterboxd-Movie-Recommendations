@@ -158,6 +158,8 @@ async def get_letterboxd_data(
 
     # Scrapes relevant Letterboxd data from each page if possible
     try:
+        # Add small delay to be respectful to Letterboxd's servers
+        await asyncio.sleep(0.5)
         async with session.get("https://letterboxd.com" + url, timeout=60) as response:
 
             # Checks is URL is not found
@@ -293,8 +295,24 @@ async def main(
     # Processes each batch asynchronously
     session_refresh = 5
     results = []
+
+    # Set proper headers to avoid being blocked by Letterboxd
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+    }
+
     for i in range(0, len(url_batches), session_refresh):
-        async with aiohttp.ClientSession() as session:
+        connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
+        timeout = aiohttp.ClientTimeout(total=60, connect=10)
+        async with aiohttp.ClientSession(
+            headers=headers, connector=connector, timeout=timeout
+        ) as session:
             tasks = [
                 movie_crawl(
                     movie_urls=batch,
