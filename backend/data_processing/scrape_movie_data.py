@@ -387,6 +387,22 @@ async def main(
     # Filter out deprecated URLs
     all_movie_urls = all_movie_urls[all_movie_urls["is_deprecated"] == False]
 
+    # NEW: Remove URLs for movies that are already in movie_data to avoid re-scraping
+    try:
+        existing_movie_ids = set(database.get_raw_movie_data()["movie_id"].tolist())
+        before_filter = len(all_movie_urls)
+        all_movie_urls = all_movie_urls[
+            ~all_movie_urls["movie_id"].isin(existing_movie_ids)
+        ]
+        # Drop any accidental duplicate movie_id rows
+        all_movie_urls = all_movie_urls.drop_duplicates(subset=["movie_id"])
+        after_filter = len(all_movie_urls)
+        print(
+            f"🔍 Filtered out {before_filter - after_filter} already-scraped movies; {after_filter} URLs remain in queue"
+        )
+    except Exception as e:
+        print(f"⚠️  Could not filter existing movies: {e}")
+
     if movie_url is not None:
         # Trims URL to match database format
         movie_url = movie_url.replace("https://letterboxd.com", "")

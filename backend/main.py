@@ -25,6 +25,7 @@ from data_processing.utils import (
 )
 from data_processing.watchlist_picks import get_user_watchlist_picks
 from model.recommender import merge_recommendations, recommend_n_movies
+from model.recommender import recommend_movies_by_category
 
 load_dotenv()
 
@@ -143,6 +144,55 @@ async def get_recommendations() -> Response:
     print(
         f'Generated movie recommendations for {", ".join(map(str, usernames))} in {finish - start} seconds'
     )
+
+    return jsonify(recommendations)
+
+
+# Gets movie recommendations based solely on category filters (no username required)
+@app.route("/api/get-category-recommendations", methods=["POST"])
+async def get_category_recommendations() -> Response:
+
+    start = time.perf_counter()
+
+    # Accept both { currentQuery: {...} } and direct JSON bodies
+    payload = request.json
+    data = (
+        payload.get("currentQuery")
+        if isinstance(payload, dict) and payload.get("currentQuery")
+        else payload
+    )
+
+    # Extract filter parameters with sensible defaults (matching frontend expectations)
+    num_recs = data.get("num_recs", 100)
+    genres = data.get("genres", [])
+    content_types = data.get("content_types", ["movie", "tv"])
+    min_release_year = data.get("min_release_year", 1900)
+    max_release_year = data.get("max_release_year", 2100)
+    min_runtime = data.get("min_runtime", 0)
+    max_runtime = data.get("max_runtime", 1000)
+    popularity = data.get("popularity", 3)
+
+    try:
+        recommendations_df = await recommend_movies_by_category(
+            num_recs=num_recs,
+            genres=genres,
+            content_types=content_types,
+            min_release_year=min_release_year,
+            max_release_year=max_release_year,
+            min_runtime=min_runtime,
+            max_runtime=max_runtime,
+            popularity=popularity,
+        )
+
+        recommendations = recommendations_df.to_dict(orient="records")
+
+    except RecommendationFilterException as e:
+        abort(406, e)
+    except Exception as e:
+        abort(500, "Error getting category recommendations")
+
+    finish = time.perf_counter()
+    print(f"Generated category-based recommendations in {finish - start} seconds")
 
     return jsonify(recommendations)
 

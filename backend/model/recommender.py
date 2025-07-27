@@ -7,6 +7,7 @@ from typing import Any, Dict, Literal, Sequence
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(project_root)
 
+from data_processing import database
 from data_processing.utils import (
     get_processed_user_df,
     RecommendationFilterException,
@@ -188,6 +189,105 @@ async def recommend_n_watchlist_movies(
     )
 
     return {"username": user, "recommendations": recommendations.iloc[:num_recs]}
+
+
+async def recommend_movies_by_category(
+    num_recs: int,
+    genres: Sequence[str],
+    content_types: Sequence[str],
+    min_release_year: int,
+    max_release_year: int,
+    min_runtime: int,
+    max_runtime: int,
+    popularity: int,
+) -> pd.DataFrame:
+    """Recommends ``num_recs`` movies using the *general* recommendation model and
+    the provided filter criteria. This variant does **not** require any user
+    profile – it simply returns the top-scoring movies that satisfy the
+    category filters.
+
+    Parameters
+    ----------
+    num_recs: int
+        Number of recommendations to return.
+    genres: Sequence[str]
+        List of genres that **must** be present. Accepts the same strings that
+        are used elsewhere in the application (e.g. "action", "comedy", ...).
+    content_types: Sequence[str]
+        Allowed content types ("movie", "tv").
+    min_release_year / max_release_year: int
+        Inclusive release year range.
+    min_runtime / max_runtime: int
+        Inclusive runtime range in minutes.
+    popularity: int
+        Integer 1-6 where 1 = mainstream, 6 = very obscure. Same mapping used
+        in the personalised recommender.
+    """
+
+    if num_recs < 1:
+        raise ValueError("Number of recommendations must be an integer greater than 0")
+
+    # Fetch movie metadata once from the database
+    movie_data = database.get_movie_data()
+
+    unseen = movie_data.copy()
+
+    # Build filter mask similar to personalised recommender
+    filter_mask = pd.Series(True, index=unseen.index)
+
+    # Genre filter
+    included_genres = [f"is_{genre}" for genre in genres]
+    if included_genres:
+        filter_mask &= unseen[included_genres].any(axis=1)
+
+    # Special genre exclusions to mirror original behaviour
+    special_genre_filters = {
+        "animation": "is_animation",
+        "horror": "is_horror",
+        "documentary": "is_documentary",
+    }
+    for genre, col in special_genre_filters.items():
+        if genre not in genres:
+            filter_mask &= unseen[col] == 0
+
+    # Content type, years, runtime
+    if content_types:
+        filter_mask &= unseen["content_type"].isin(content_types)
+    filter_mask &= (unseen["release_year"] >= min_release_year) & (
+        unseen["release_year"] <= max_release_year
+    )
+    filter_mask &= (unseen["runtime"] >= min_runtime) & (
+        unseen["runtime"] <= max_runtime
+    )
+
+    # Popularity percentile filter (reuse same mapping)
+    popularity_map = {1: 1, 2: 0.7, 3: 0.4, 4: 0.2, 5: 0.1, 6: 0.05}
+    threshold = np.percentile(
+        unseen["letterboxd_rating_count"], 100 * (1 - popularity_map[popularity])
+    )
+    filter_mask &= unseen["letterboxd_rating_count"] >= threshold
+
+    unseen = unseen.loc[filter_mask]
+    if len(unseen) == 0:
+        raise RecommendationFilterException(
+            "No movies fit the selected filter criteria"
+        )
+
+    # Prepare features & load model
+    X_unseen = prepare_general_features(X=unseen)
+    model = load_general_model()
+
+    predicted_ratings = model.predict(X_unseen)
+    unseen["predicted_rating"] = np.clip(predicted_ratings, 0.5, 5).astype("float32")
+    unseen["predicted_rating"] = unseen["predicted_rating"].apply(
+        lambda x: "{:.2f}".format(round(x, 2))
+    )
+
+    recommendations = unseen.sort_values(by="predicted_rating", ascending=False)[
+        ["title", "poster", "release_year", "predicted_rating", "url"]
+    ].drop_duplicates(subset="url")
+
+    return recommendations.iloc[:num_recs]
 
 
 # Merges recommendations for multiple users
