@@ -182,7 +182,7 @@ class MovieRecommendations(Resource):
             500: "Internal Server Error - User profile error or other server issues",
         },
     )
-    async def post(self):
+    def post(self):
         """Get movie recommendations for specified users and criteria"""
 
         start = time.perf_counter()
@@ -201,17 +201,19 @@ class MovieRecommendations(Resource):
         # Gets movie recommendations
         try:
             if len(usernames) == 1:
-                recommendations = await recommend_n_movies(
-                    num_recs=100,
-                    user=usernames[0],
-                    model_type=model_type,
-                    genres=genres,
-                    content_types=content_types,
-                    min_release_year=min_release_year,
-                    max_release_year=max_release_year,
-                    min_runtime=min_runtime,
-                    max_runtime=max_runtime,
-                    popularity=popularity,
+                recommendations = asyncio.run(
+                    recommend_n_movies(
+                        num_recs=100,
+                        user=usernames[0],
+                        model_type=model_type,
+                        genres=genres,
+                        content_types=content_types,
+                        min_release_year=min_release_year,
+                        max_release_year=max_release_year,
+                        min_runtime=min_runtime,
+                        max_runtime=max_runtime,
+                        popularity=popularity,
+                    )
                 )
 
                 recommendations = recommendations["recommendations"].to_dict(
@@ -234,7 +236,7 @@ class MovieRecommendations(Resource):
                     )
                     for username in usernames
                 ]
-                all_recommendations = await asyncio.gather(*tasks)
+                all_recommendations = asyncio.run(asyncio.gather(*tasks))
 
                 # Merges recommendations
                 merged_recommendations = merge_recommendations(
@@ -271,7 +273,7 @@ class CategoryRecommendations(Resource):
     @api.doc(
         description="Get movie recommendations based solely on category filters (no username required)"
     )
-    async def post(self):
+    def post(self):
         """Get category-based movie recommendations"""
 
         start = time.perf_counter()
@@ -295,15 +297,17 @@ class CategoryRecommendations(Resource):
         popularity = data.get("popularity", 3)
 
         try:
-            recommendations_df = await recommend_movies_by_category(
-                num_recs=num_recs,
-                genres=genres,
-                content_types=content_types,
-                min_release_year=min_release_year,
-                max_release_year=max_release_year,
-                min_runtime=min_runtime,
-                max_runtime=max_runtime,
-                popularity=popularity,
+            recommendations_df = asyncio.run(
+                recommend_movies_by_category(
+                    num_recs=num_recs,
+                    genres=genres,
+                    content_types=content_types,
+                    min_release_year=min_release_year,
+                    max_release_year=max_release_year,
+                    min_runtime=min_runtime,
+                    max_runtime=max_runtime,
+                    popularity=popularity,
+                )
             )
 
             recommendations = recommendations_df.to_dict(orient="records")
@@ -338,7 +342,7 @@ class Users(Resource):
 class Statistics(Resource):
     @api.expect(statistics_request)
     @api.doc(description="Get user statistics and profile analysis")
-    async def post(self):
+    def post(self):
         """Get user statistics"""
 
         start = time.perf_counter()
@@ -354,8 +358,8 @@ class Statistics(Resource):
 
         # Gets user dataframe
         try:
-            user_df = await get_user_dataframe(
-                username, movie_data, update_urls=True, verbose=True
+            user_df = asyncio.run(
+                get_user_dataframe(username, movie_data, update_urls=True, verbose=True)
             )
         except UserProfileException as e:
             abort(500, str(e))
@@ -369,7 +373,7 @@ class Statistics(Resource):
 
         # Gets user stats
         try:
-            user_stats = await get_user_statistics(user_df)
+            user_stats = asyncio.run(get_user_statistics(user_df))
             statistics = {"simple_stats": user_stats}
         except:
             abort(500, "Failed to calculate user statistics")
@@ -406,7 +410,7 @@ class Statistics(Resource):
 class WatchlistPicks(Resource):
     @api.expect(watchlist_request)
     @api.doc(description="Get watchlist picks for multiple users")
-    async def post(self):
+    def post(self):
         """Get watchlist picks"""
 
         start = time.perf_counter()
@@ -420,12 +424,14 @@ class WatchlistPicks(Resource):
 
         # Gets watchlist picks
         try:
-            watchlist_picks = await get_user_watchlist_picks(
-                user_list=user_list,
-                overlap=overlap,
-                pick_type=pick_type,
-                model_type=model_type,
-                num_picks=num_picks,
+            watchlist_picks = asyncio.run(
+                get_user_watchlist_picks(
+                    user_list=user_list,
+                    overlap=overlap,
+                    pick_type=pick_type,
+                    model_type=model_type,
+                    num_picks=num_picks,
+                )
             )
         except WatchlistOverlapException as e:
             abort(406, str(e))
