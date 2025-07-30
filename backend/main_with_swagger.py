@@ -98,9 +98,7 @@ recommendation_request = api.model(
 category_recommendation_request = api.model(
     "CategoryRecommendationRequest",
     {
-        "num_recs": fields.Integer(
-            description="Number of recommendations", default=100
-        ),
+        "num_recs": fields.Integer(description="Number of recommendations", default=25),
         "genres": fields.List(fields.String, description="List of genres"),
         "content_types": fields.List(
             fields.String, description="Content types", default=["movie", "tv"]
@@ -203,7 +201,7 @@ class MovieRecommendations(Resource):
             if len(usernames) == 1:
                 recommendations = asyncio.run(
                     recommend_n_movies(
-                        num_recs=100,
+                        num_recs=25,
                         user=usernames[0],
                         model_type=model_type,
                         genres=genres,
@@ -240,7 +238,7 @@ class MovieRecommendations(Resource):
 
                 # Merges recommendations
                 merged_recommendations = merge_recommendations(
-                    num_recs=100, all_recommendations=all_recommendations
+                    num_recs=25, all_recommendations=all_recommendations
                 )
                 recommendations = merged_recommendations.to_dict(orient="records")
 
@@ -287,7 +285,7 @@ class CategoryRecommendations(Resource):
         )
 
         # Extract filter parameters with sensible defaults
-        num_recs = data.get("num_recs", 100)
+        num_recs = data.get("num_recs", 25)
         genres = data.get("genres", [])
         content_types = data.get("content_types", ["movie", "tv"])
         min_release_year = data.get("min_release_year", 1900)
@@ -527,4 +525,4 @@ if __name__ == "__main__":
     print("📖 Swagger documentation available at: http://127.0.0.1:3000/docs/")
     print("🎬 API endpoints available at: http://127.0.0.1:3000/api/")
     print("🔧 All endpoints from main.py now included!")
-    app.run(debug=True, port=3000)
+    app.run(debug=True, port=4000)

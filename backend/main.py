@@ -86,7 +86,7 @@ async def get_recommendations() -> Response:
     try:
         if len(usernames) == 1:
             recommendations = await recommend_n_movies(
-                num_recs=100,
+                num_recs=20,
                 user=usernames[0],
                 model_type=model_type,
                 genres=genres,
@@ -105,7 +105,7 @@ async def get_recommendations() -> Response:
         else:
             tasks = [
                 recommend_n_movies(
-                    num_recs=500,
+                    num_recs=20,
                     user=username,
                     model_type=model_type,
                     genres=genres,
@@ -358,4 +358,4 @@ def clear_movie_data_cache() -> Response:
 
 if __name__ == "__main__":
 
-    app.run(debug=True, port=3000)
+    app.run(debug=True, port=4000)
