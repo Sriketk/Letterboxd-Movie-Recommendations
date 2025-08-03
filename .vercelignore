@@ -27,6 +27,7 @@ test_*.py
 *_test.py
 debug_*.py
 check_*.py
+model/general
 
 # Documentation and development files
 README.md
