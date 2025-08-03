@@ -1,5 +1,15 @@
 {
     "rewrites": [
         { "source": "/(.*)", "destination": "/api/main_with_swagger.py" }
-    ]
+    ],
+    "functions": {
+        "api/main_with_swagger.py": {
+            "maxDuration": 30
+        }
+    },
+    "build": {
+        "env": {
+            "PYTHONPATH": "."
+        }
+    }
 }

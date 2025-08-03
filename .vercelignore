@@ -1,0 +1,66 @@
+# Development and environment files
+venv/
+.env
+.env.local
+.env.*.local
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test files and scripts
+lib/scripts/
+lib/test/
+test_*.py
+*_test.py
+debug_*.py
+check_*.py
+
+# Documentation and development files
+README.md
+MAKEFILE_USAGE.md
+Makefile
+database_schema.sql
+.github/
+
+# Large data files and figures
+lib/figures/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.pdf
+
+# Git files
+.git/
+.gitignore
+
+# Node.js files (if any)
+node_modules/
+package-lock.json
+package.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp 

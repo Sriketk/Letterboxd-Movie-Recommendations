@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 from flask import abort, Flask, jsonify, Response, request
 from flask_cors import CORS
 from flask_restx import Api, Resource, fields
-import gdown
+
 import json
 import os
 import sys
