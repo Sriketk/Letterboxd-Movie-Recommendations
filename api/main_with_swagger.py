@@ -9,24 +9,24 @@ import os
 import sys
 import time
 
-project_root = os.path.abspath(os.path.dirname(__file__))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(project_root)
 
-from data_processing import database
-from data_processing.calculate_user_statistics import (
+import lib.data_processing.database as database
+from lib.data_processing.calculate_user_statistics import (
     get_user_percentiles,
     get_user_statistics,
 )
-from data_processing.utils import (
+from lib.data_processing.utils import (
     get_user_dataframe,
     RecommendationFilterException,
     UserProfileException,
     WatchlistEmptyException,
     WatchlistOverlapException,
 )
-from data_processing.watchlist_picks import get_user_watchlist_picks
-from model.recommender import merge_recommendations, recommend_n_movies
-from model.recommender import recommend_movies_by_category
+from lib.data_processing.watchlist_picks import get_user_watchlist_picks
+from lib.model.recommender import merge_recommendations, recommend_n_movies
+from lib.model.recommender import recommend_movies_by_category
 
 load_dotenv()
 
