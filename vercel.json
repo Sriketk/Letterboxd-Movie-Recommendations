@@ -1,0 +1,5 @@
+{
+    "rewrites": [
+        { "source": "/(.*)", "destination": "/backend/main_with_swagger.py" }
+    ]
+}
