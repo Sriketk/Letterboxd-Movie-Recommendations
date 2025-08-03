@@ -3,8 +3,8 @@
         { "source": "/(.*)", "destination": "/api/main_with_swagger.py" }
     ],
     "functions": {
-        "api/main_with_swagger.py": {
-            "maxDuration": 30
+        "api/**": {
+            "excludeFiles": "{.next,*.cache,node_modules,public,app}/**"
         }
     },
     "build": {
