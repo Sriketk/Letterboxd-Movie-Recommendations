@@ -1,10 +1,10 @@
 import asyncio
 from dotenv import load_dotenv
-from flask import abort, Flask, jsonify, Response, request
+from flask import abort, Flask, request
 from flask_cors import CORS
 from flask_restx import Api, Resource, fields
 
-import json
+
 import os
 import sys
 import time
@@ -13,20 +13,11 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(project_root)
 
 import lib.data_processing.database as database
-from lib.data_processing.calculate_user_statistics import (
-    get_user_percentiles,
-    get_user_statistics,
-)
 from lib.data_processing.utils import (
-    get_user_dataframe,
     RecommendationFilterException,
     UserProfileException,
-    WatchlistEmptyException,
-    WatchlistOverlapException,
 )
-from lib.data_processing.watchlist_picks import get_user_watchlist_picks
 from lib.model.recommender import merge_recommendations, recommend_n_movies
-from lib.model.recommender import recommend_movies_by_category
 
 load_dotenv()
 
@@ -95,31 +86,6 @@ recommendation_request = api.model(
     },
 )
 
-category_recommendation_request = api.model(
-    "CategoryRecommendationRequest",
-    {
-        "num_recs": fields.Integer(description="Number of recommendations", default=25),
-        "genres": fields.List(fields.String, description="List of genres"),
-        "content_types": fields.List(
-            fields.String, description="Content types", default=["movie", "tv"]
-        ),
-        "min_release_year": fields.Integer(
-            description="Minimum release year", default=1900
-        ),
-        "max_release_year": fields.Integer(
-            description="Maximum release year", default=2100
-        ),
-        "min_runtime": fields.Integer(description="Minimum runtime", default=0),
-        "max_runtime": fields.Integer(description="Maximum runtime", default=1000),
-        "popularity": fields.Integer(description="Popularity level", default=3),
-    },
-)
-
-statistics_request = api.model(
-    "StatisticsRequest",
-    {"username": fields.String(required=True, description="Letterboxd username")},
-)
-
 watchlist_data = api.model(
     "WatchlistData",
     {
@@ -153,10 +119,6 @@ movie_recommendation = api.model(
     },
 )
 
-user_list_response = api.model(
-    "UserListResponse",
-    {"users": fields.List(fields.String, description="List of usernames")},
-)
 
 health_response = api.model(
     "HealthResponse",
@@ -264,63 +226,6 @@ class MovieRecommendations(Resource):
         return recommendations
 
 
-@recommendations_ns.route("/get-category-recommendations")
-class CategoryRecommendations(Resource):
-    @api.expect(category_recommendation_request)
-    @api.marshal_list_with(movie_recommendation)
-    @api.doc(
-        description="Get movie recommendations based solely on category filters (no username required)"
-    )
-    def post(self):
-        """Get category-based movie recommendations"""
-
-        start = time.perf_counter()
-
-        # Accept both { currentQuery: {...} } and direct JSON bodies
-        payload = request.json
-        data = (
-            payload.get("currentQuery")
-            if isinstance(payload, dict) and payload.get("currentQuery")
-            else payload
-        )
-
-        # Extract filter parameters with sensible defaults
-        num_recs = data.get("num_recs", 25)
-        genres = data.get("genres", [])
-        content_types = data.get("content_types", ["movie", "tv"])
-        min_release_year = data.get("min_release_year", 1900)
-        max_release_year = data.get("max_release_year", 2100)
-        min_runtime = data.get("min_runtime", 0)
-        max_runtime = data.get("max_runtime", 1000)
-        popularity = data.get("popularity", 3)
-
-        try:
-            recommendations_df = asyncio.run(
-                recommend_movies_by_category(
-                    num_recs=num_recs,
-                    genres=genres,
-                    content_types=content_types,
-                    min_release_year=min_release_year,
-                    max_release_year=max_release_year,
-                    min_runtime=min_runtime,
-                    max_runtime=max_runtime,
-                    popularity=popularity,
-                )
-            )
-
-            recommendations = recommendations_df.to_dict(orient="records")
-
-        except RecommendationFilterException as e:
-            abort(406, str(e))
-        except Exception as e:
-            abort(500, "Error getting category recommendations")
-
-        finish = time.perf_counter()
-        print(f"Generated category-based recommendations in {finish - start} seconds")
-
-        return recommendations
-
-
 # USER ENDPOINTS
 @users_ns.route("/users")
 class Users(Resource):
@@ -336,161 +241,9 @@ class Users(Resource):
 
 
 # STATISTICS ENDPOINTS
-@stats_ns.route("/get-statistics")
-class Statistics(Resource):
-    @api.expect(statistics_request)
-    @api.doc(description="Get user statistics and profile analysis")
-    def post(self):
-        """Get user statistics"""
-
-        start = time.perf_counter()
-
-        username = request.json.get("username")
-
-        # Gets movie data from database
-        try:
-            movie_data = database.get_movie_data()
-        except Exception as e:
-            print("Failed to get movie data")
-            abort(500, "Failed to get movie data")
-
-        # Gets user dataframe
-        try:
-            user_df = asyncio.run(
-                get_user_dataframe(username, movie_data, update_urls=True, verbose=True)
-            )
-        except UserProfileException as e:
-            abort(500, str(e))
-
-        # Updates user log in database
-        try:
-            database.update_user_log(username)
-            print(f"Successfully logged {username} in database")
-        except:
-            print(f"Failed to log {username} in database")
-
-        # Gets user stats
-        try:
-            user_stats = asyncio.run(get_user_statistics(user_df))
-            statistics = {"simple_stats": user_stats}
-        except:
-            abort(500, "Failed to calculate user statistics")
-
-        # Updates user stats in database
-        try:
-            database.update_user_statistics(username, user_stats)
-            print(f"Successfully updated statistics for {username} in database")
-        except:
-            print(f"Failed to update statistics for {username} in database")
-
-        # Gets user distribution values
-        statistics["distribution"] = {
-            "user_rating_values": user_df["user_rating"].tolist(),
-            "letterboxd_rating_values": user_df["letterboxd_rating"].dropna().tolist(),
-        }
-
-        # Gets user percentiles
-        try:
-            user_percentiles = get_user_percentiles(user_stats)
-            statistics["percentiles"] = user_percentiles
-        except:
-            abort(500, "Failed to get user percentiles")
-
-        finish = time.perf_counter()
-        print(
-            f"Calculated profile statistics for {username} in {finish - start} seconds"
-        )
-
-        return statistics
-
-
-@stats_ns.route("/get-watchlist-picks")
-class WatchlistPicks(Resource):
-    @api.expect(watchlist_request)
-    @api.doc(description="Get watchlist picks for multiple users")
-    def post(self):
-        """Get watchlist picks"""
-
-        start = time.perf_counter()
-
-        data = request.json.get("data")
-        user_list = data.get("userList")
-        overlap = data.get("overlap")
-        pick_type = data.get("pickType")
-        model_type = "personalized"  # TODO implemented frontend
-        num_picks = data.get("numPicks")
-
-        # Gets watchlist picks
-        try:
-            watchlist_picks = asyncio.run(
-                get_user_watchlist_picks(
-                    user_list=user_list,
-                    overlap=overlap,
-                    pick_type=pick_type,
-                    model_type=model_type,
-                    num_picks=num_picks,
-                )
-            )
-        except WatchlistOverlapException as e:
-            abort(406, str(e))
-        except WatchlistEmptyException as e:
-            abort(500, str(e))
-
-        # Updates user logs in database
-        try:
-            database.update_many_user_logs(user_list)
-            print(f'Successfully logged {", ".join(map(str, user_list))} in database')
-        except:
-            print(f'Failed to log {", ".join(map(str, user_list))} in database')
-
-        finish = time.perf_counter()
-        print(
-            f'Picked from watchlist for {", ".join(map(str, user_list))} in {finish - start} seconds'
-        )
-
-        return watchlist_picks
 
 
 # CONTENT ENDPOINTS
-@content_ns.route("/get-frequently-asked-questions")
-class FAQ(Resource):
-    @api.doc(description="Get frequently asked questions")
-    def get(self):
-        """Get frequently asked questions"""
-        try:
-            with open("data/faq.json", "r") as f:
-                faq = json.load(f)
-            return faq
-        except Exception as e:
-            print(e)
-            abort(500, "Failed to get frequently asked questions")
-
-
-@content_ns.route("/get-application-metrics")
-class ApplicationMetrics(Resource):
-    @api.doc(description="Get application metrics")
-    def get(self):
-        """Get application metrics"""
-        try:
-            metrics = database.get_application_metrics()
-            return metrics
-        except Exception as e:
-            print(e)
-            abort(500, "Failed to get application metrics")
-
-
-@content_ns.route("/get-release-notes")
-class ReleaseNotes(Resource):
-    @api.doc(description="Get release notes")
-    def get(self):
-        """Get release notes"""
-        try:
-            with open("data/release_notes.json", "r") as f:
-                notes = json.load(f)
-            return notes
-        except Exception as e:
-            print(e)
-            abort(500, "Failed to get release notes")
 
 
 # ADMIN ENDPOINTS
