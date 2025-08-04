@@ -1,4 +1,4 @@
-# import aiohttp
+import aiohttp
 from dotenv import load_dotenv
 import json
 import os
