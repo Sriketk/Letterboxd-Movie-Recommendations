@@ -27,7 +27,22 @@ test_*.py
 *_test.py
 debug_*.py
 check_*.py
-model/general
+lib/model/general/
+lib/model/models/
+
+# Machine learning model files
+*.pkl
+*.joblib
+*.model
+*.h5
+*.pt
+*.pth
+
+# Additional ML library exclusions
+**/test/
+**/tests/
+**/testing/
+**/__pycache__/
 
 # Documentation and development files
 README.md

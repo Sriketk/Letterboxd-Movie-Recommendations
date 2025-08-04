@@ -275,7 +275,14 @@ class HealthCheck(Resource):
 
 if __name__ == "__main__":
     print("🚀 Starting Letterboxd Movie Recommendations API")
-    print("📖 Swagger documentation available at: http://127.0.0.1:3000/docs/")
-    print("🎬 API endpoints available at: http://127.0.0.1:3000/api/")
+    print("📖 Swagger documentation available at: http://127.0.0.1:4000/docs/")
+    print("🎬 API endpoints available at: http://127.0.0.1:4000/api/")
     print("🔧 All endpoints from main.py now included!")
-    app.run(debug=True, port=4000)
+
+    # Get port from environment variable (for cloud deployments) or default to 4000
+    port = int(os.environ.get("PORT", 4000))
+
+    # Bind to 0.0.0.0 for cloud deployments, localhost for local development
+    host = "0.0.0.0" if os.environ.get("ENV") == "PROD" else "127.0.0.1"
+
+    app.run(debug=True, host=host, port=port)
