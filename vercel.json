@@ -1,6 +1,30 @@
 {
-    "rewrites": [
-        { "source": "/(.*)", "destination": "/api/main_with_swagger.py" }
+    "builds": [
+        {
+            "src": "app/main_with_swagger.py",
+            "use": "@vercel/python"
+        }
     ],
-    "excludeFiles": "{.next,*.cache,node_modules,public,app,*.md,.vscode,.github,lib/data_processing/scrape_user_ratings.py}/**"
+    "routes": [
+        {
+            "src": "app/(.*)",
+            "dest": "app/main_with_swagger.py"
+        }
+    ],
+    "excludeFiles": [
+        "**/*.pyc",
+        "**/__pycache__/**",
+        ".env",
+        ".git/**",
+        ".venv/**",
+        "automations/**",
+        "docs/**",
+        "logdir/**",
+        "tests/**",
+        "prisma/migrations/**",
+        "Dockerfile",
+        "README.md",
+        "pytest.ini",
+        "package.json"
+    ]
 }
