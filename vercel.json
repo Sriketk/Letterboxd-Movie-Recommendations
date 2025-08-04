@@ -2,14 +2,5 @@
     "rewrites": [
         { "source": "/(.*)", "destination": "/api/main_with_swagger.py" }
     ],
-    "functions": {
-        "api/**": {
-            "excludeFiles": "{.next,*.cache,node_modules,public,app}/**"
-        }
-    },
-    "build": {
-        "env": {
-            "PYTHONPATH": "."
-        }
-    }
+    "excludeFiles": "{.next,*.cache,node_modules,public,app,*.md,.vscode,.github,lib/data_processing/scrape_user_ratings.py}/**"
 }
