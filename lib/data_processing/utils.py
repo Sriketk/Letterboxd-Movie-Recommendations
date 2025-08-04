@@ -6,21 +6,21 @@ import pandas as pd
 import sys
 from typing import Dict, Sequence, Tuple
 
-# from upstash_redis import Redis
+from upstash_redis import Redis
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(project_root)
 
 from data_processing import database
 
-# from data_processing.scrape_user_ratings import get_user_ratings
+from data_processing.scrape_user_ratings import get_user_ratings
 
 load_dotenv()
 
-# redis = Redis(
-#     url=os.getenv("UPSTASH_REDIS_REST_URL"),
-#     token=os.getenv("UPSTASH_REDIS_REST_TOKEN"),
-# )
+redis = Redis(
+    url=os.getenv("UPSTASH_REDIS_REST_URL"),
+    token=os.getenv("UPSTASH_REDIS_REST_TOKEN"),
+)
 
 
 # Custom exceptions
