@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS movie_data (
     runtime INTEGER,
     genres TEXT,
     country_of_origin INTEGER,
+    language INTEGER,
     content_type VARCHAR(50),
     letterboxd_rating REAL,
     letterboxd_rating_count INTEGER,

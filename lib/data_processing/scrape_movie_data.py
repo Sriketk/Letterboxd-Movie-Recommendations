@@ -79,6 +79,35 @@ def assign_countries(country_of_origin: str) -> int:
     return country_map.get(country_of_origin, len(country_map))
 
 
+# Maps language to numerical values
+def assign_languages(language: str) -> int:
+
+    language_map = {
+        "English": 0,
+        "Spanish": 1,
+        "French": 2,
+        "German": 3,
+        "Italian": 4,
+        "Portuguese": 5,
+        "Russian": 6,
+        "Japanese": 7,
+        "Korean": 8,
+        "Chinese": 9,
+        "Hindi": 10,
+        "Arabic": 11,
+        "Swedish": 12,
+        "Norwegian": 13,
+        "Danish": 14,
+        "Dutch": 15,
+        "Polish": 16,
+        "Turkish": 17,
+        "Greek": 18,
+        "Hebrew": 19,
+    }
+
+    return language_map.get(language, len(language_map))
+
+
 # Adds boolean genre columns from encoded genres integer
 def add_genre_boolean_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Populates boolean genre columns from the encoded genres integer"""
@@ -209,6 +238,7 @@ async def movie_crawl(
         movie_data_df["country_of_origin"] = movie_data_df["country_of_origin"].apply(
             assign_countries
         )
+        movie_data_df["language"] = movie_data_df["language"].apply(assign_languages)
 
         # Add boolean genre columns
         print(f"  🏷️  Adding genre boolean columns...")
@@ -318,6 +348,74 @@ async def get_letterboxd_data(
                 ]  # Letterboxd rating count
                 genre = webData["genre"]  # Genres
                 country = webData["countryOfOrigin"][0]["name"]  # Country of origin
+
+                # Extract language information
+                language = "English"  # Default to English
+                if "inLanguage" in webData:
+                    if (
+                        isinstance(webData["inLanguage"], list)
+                        and len(webData["inLanguage"]) > 0
+                    ):
+                        language = webData["inLanguage"][0]["name"]
+                    elif isinstance(webData["inLanguage"], dict):
+                        language = webData["inLanguage"]["name"]
+
+                        # If no language in JSON, try to find it in the HTML
+                if language == "English":
+                    # Look for language in text-slug elements (common pattern for language tags)
+                    language_elements = soup.find_all("a", {"class": "text-slug"})
+
+                    # First, look for "Primary Language" specifically
+                    primary_language_found = False
+                    for elem in language_elements:
+                        elem_text = elem.get_text().strip()
+                        # Check if this element is near a "Primary Language" label
+                        parent = elem.parent
+                        if parent:
+                            parent_text = parent.get_text()
+                            if "Primary Language" in parent_text:
+                                language = elem_text
+                                primary_language_found = True
+                                break
+
+                    # If no "Primary Language" found, look for just "Language"
+                    if not primary_language_found:
+                        for elem in language_elements:
+                            elem_text = elem.get_text().strip()
+                            # Check if this element is near a "Language" label (but not "Primary Language")
+                            parent = elem.parent
+                            if parent:
+                                parent_text = parent.get_text()
+                                if (
+                                    "Language" in parent_text
+                                    and "Primary Language" not in parent_text
+                                ):
+                                    language = elem_text
+                                    break
+
+                    # If still not found, look for any language mentions in text-slug elements
+                    if language == "English":
+                        for elem in language_elements:
+                            elem_text = elem.get_text().strip()
+                            # Check if it's a known language
+                            known_languages = [
+                                "Korean",
+                                "English",
+                                "Spanish",
+                                "French",
+                                "German",
+                                "Italian",
+                                "Japanese",
+                                "Chinese",
+                                "Russian",
+                                "Portuguese",
+                                "Hindi",
+                                "Arabic",
+                            ]
+                            if elem_text in known_languages:
+                                language = elem_text
+                                break
+
                 poster = webData["image"]  # Poster
             except asyncio.TimeoutError:
                 # Catches timeout
@@ -356,6 +454,7 @@ async def get_letterboxd_data(
             "letterboxd_rating_count": rating_count,
             "genres": genre,
             "country_of_origin": country,
+            "language": language,
             "poster": poster,
         }, False
     except aiohttp.ClientOSError as e:
